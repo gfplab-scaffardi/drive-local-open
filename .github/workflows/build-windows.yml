@@ -1,0 +1,71 @@
+name: Build Windows installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install -U pip pyinstaller
+          python -c "import pathlib,re; t=pathlib.Path('pyproject.toml').read_text(encoding='utf-8'); print(re.search(r'version\\s*=\\s*\"([^\"]+)\"', t).group(1))" > version.txt
+          type version.txt
+
+      - name: Build onefile exe
+        run: |
+          pyinstaller --noconfirm --clean --distpath dist --workpath build packaging/windows/drive_local_open.spec
+          dir dist
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $ver = (Get-Content version.txt -Raw).Trim()
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" packaging\windows\installer.iss
+          Get-ChildItem dist
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist -Filter 'DriveLocalOpen-Setup-*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'Setup exe not found' }
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path ($setup.FullName + '.sha256') -Value ("{0}  {1}" -f $hash, $setup.Name) -NoNewline
+          Get-Content ($setup.FullName + '.sha256')
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist/DriveLocalOpen-Setup-*.exe
+            dist/DriveLocalOpen-Setup-*.exe.sha256
+            dist/drive-local-open.exe
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist -Filter 'DriveLocalOpen-Setup-*.exe' | Select-Object -First 1
+          $sha = $setup.FullName + '.sha256'
+          gh release upload $env:GITHUB_REF_NAME $setup.FullName $sha --clobber

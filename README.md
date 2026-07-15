@@ -7,28 +7,44 @@ Chrome で開いている Google ドライブのフォルダを、PC 内の同�
 - ソース: https://github.com/suomimasuda/drive-local-open
 - 配布: https://github.com/suomimasuda/drive-local-open/releases/latest
 
+## インストール（おすすめ）
+
+### macOS
+
+1. [DriveLocalOpen-0.2.0.dmg](https://github.com/suomimasuda/drive-local-open/releases/latest) を開く
+2. `Drive Local Open.app` を Applications へドラッグ
+3. 案内ページのブックマークレットを追加
+
+未署名ビルドの初回だけ、右クリック → 「開く」が必要な場合があります（[署名手順](docs/macos-signing.md)）。
+
+### Windows
+
+1. [DriveLocalOpen-Setup-0.2.0.exe](https://github.com/suomimasuda/drive-local-open/releases/latest) を実行
+2. スマートスクリーンが出たら「詳細情報」→「実行」
+3. 案内ページのブックマークレットを追加
+
 ## 要件
 
 - Google Drive for Desktop（サインイン済み）
-- Python 3.10+
-- macOS または Windows
+- macOS または Windows（開発ビルドは Python 3.10+）
 
-## インストール（開発）
+## インストール（開発・ソース）
 
 ```bash
-git clone <this-repo> drive-local-open
+git clone https://github.com/suomimasuda/drive-local-open.git
 cd drive-local-open
 
-# macOS: CLI + URL scheme app
+# macOS: CLI + URL scheme app（開発）
 ./apps/macos/install_local.sh
 
-# Windows: プロトコル登録
+# Windows: プロトコル登録（開発）
 apps\windows\register_protocol.bat
 
-drive-local-open --help
+# 配布用バイナリ生成
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+./packaging/macos/build_dmg.sh          # → dist/DriveLocalOpen-*.dmg
+./scripts/make_dist_zip.sh              # → dist/drive-local-open-*.zip
 ```
-
-公開案内ページ: https://www.i-s3.com/tools/drive-local-open.html
 
 ## 使い方
 
@@ -57,11 +73,4 @@ DRIVE_LOCAL_OPEN_QUIET=1 drive-local-open --open files URL
 
 ```bash
 python3 -m unittest discover -s tests -v
-```
-
-## 配布用 zip（任意）
-
-```bash
-./scripts/make_dist_zip.sh
-# → dist/drive-local-open-0.1.0.zip
 ```
