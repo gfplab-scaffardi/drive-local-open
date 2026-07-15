@@ -29,7 +29,6 @@ SetupLogging=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Files]
 Source: "..\..\dist\drive-local-open.exe"; DestDir: "{app}"; Flags: ignoreversion

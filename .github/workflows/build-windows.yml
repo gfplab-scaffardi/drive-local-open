@@ -22,15 +22,17 @@ jobs:
           python-version: "3.12"
 
       - name: Install PyInstaller
+        shell: bash
         run: |
           python -m pip install -U pip pyinstaller
-          python -c "import pathlib,re; t=pathlib.Path('pyproject.toml').read_text(encoding='utf-8'); print(re.search(r'version\\s*=\\s*\"([^\"]+)\"', t).group(1))" > version.txt
-          type version.txt
+          python -c "import pathlib,re; t=pathlib.Path('pyproject.toml').read_text(encoding='utf-8'); print(re.search(r'version\s*=\s*\"([^\"]+)\"', t).group(1))" > version.txt
+          cat version.txt
 
       - name: Build onefile exe
+        shell: bash
         run: |
           pyinstaller --noconfirm --clean --distpath dist --workpath build packaging/windows/drive_local_open.spec
-          dir dist
+          ls -la dist
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
