@@ -68,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="files=Finder/Explorer（既定）, terminal=ターミナル, both=両方, none=開かない",
     )
     p.add_argument("--print-only", action="store_true", help="解決したパスだけ表示")
+    p.add_argument(
+        "--no-fallback-parent",
+        action="store_true",
+        help="未同期時に存在する親フォルダへフォールバックしない（S4）",
+    )
     p.add_argument("--no-notify", action="store_true", help="通知を出さない")
     p.add_argument("--no-promo", action="store_true", help="ターミナルの2行リンクを出さない")
     p.add_argument("--quiet", action="store_true", help="通知もプロモも出さない（DRIVE_LOCAL_OPEN_QUIET=1 と同じ）")
@@ -98,8 +103,13 @@ def main(argv: list[str] | None = None) -> int:
                 "フォルダまたはファイルの ID を含む Drive / Docs URL を開いてください。",
             )
 
-        result = resolve_parsed(parsed)
+        result = resolve_parsed(
+            parsed,
+            allow_parent_fallback=not args.no_fallback_parent,
+        )
         path = result.path
+        if result.note and not args.quiet:
+            print(f"[note] {result.note}", file=sys.stderr)
 
         if args.print_only or args.open == "none":
             print(path)
@@ -112,7 +122,10 @@ def main(argv: list[str] | None = None) -> int:
 
         print(path)
         if not args.no_notify and not args.quiet:
-            notify("Drive Local Open", str(path))
+            msg = str(path)
+            if result.source == "parent_fallback":
+                msg = f"未同期のため親を開きました: {path}"
+            notify("Drive Local Open", msg)
         return 0
     except DriveLocalOpenError as exc:
         if not args.no_notify and not args.quiet:

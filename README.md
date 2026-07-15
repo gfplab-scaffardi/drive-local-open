@@ -14,13 +14,19 @@ Chrome で開いている Google ドライブのフォルダを、PC 内の同�
 ## インストール（開発）
 
 ```bash
-cd /Users/suomi/I-S3HP/drive-local-open
-./apps/macos/install_local.sh   # macOS: CLI + URL scheme app
-# Windows: apps\windows\register_protocol.bat
+git clone <this-repo> drive-local-open
+cd drive-local-open
+
+# macOS: CLI + URL scheme app
+./apps/macos/install_local.sh
+
+# Windows: プロトコル登録
+apps\windows\register_protocol.bat
+
 drive-local-open --help
 ```
 
-公開案内ページ（I-S3 サイト）: `../i-s3home/htdocs/tools/drive-local-open.html` → https://www.i-s3.com/tools/drive-local-open.html
+公開案内ページ: https://www.i-s3.com/tools/drive-local-open.html
 
 ## 使い方
 
@@ -34,6 +40,9 @@ drive-local-open --print-only 'https://drive.google.com/drive/u/0/my-drive'
 # ターミナルも開く（2行の任意リンクを表示）
 drive-local-open --open both 'https://drive.google.com/drive/folders/XXXX'
 
+# 未同期時に親フォルダへフォールバックしない
+drive-local-open --no-fallback-parent URL
+
 # 通知・プロモ抑制
 DRIVE_LOCAL_OPEN_QUIET=1 drive-local-open --open files URL
 ```
@@ -46,4 +55,11 @@ DRIVE_LOCAL_OPEN_QUIET=1 drive-local-open --open files URL
 
 ```bash
 python3 -m unittest discover -s tests -v
+```
+
+## 配布用 zip（任意）
+
+```bash
+./scripts/make_dist_zip.sh
+# → dist/drive-local-open-0.1.0.zip
 ```

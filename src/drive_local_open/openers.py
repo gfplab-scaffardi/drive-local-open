@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .errors import DriveLocalOpenError
+from .resolve import DRIVE_DOWNLOAD_URL
 
 PROMO_COMMENT = "I-S3 技術ライブラリへ（任意）"
 PROMO_URL = (
@@ -53,7 +54,10 @@ def open_file_manager(directory: Path) -> None:
     else:
         opener = shutil.which("xdg-open")
         if not opener:
-            raise DriveLocalOpenError("S2", "この OS ではフォルダを開けません。")
+            raise DriveLocalOpenError(
+                "S2",
+                f"この OS ではフォルダを開けません。Drive for Desktop: {DRIVE_DOWNLOAD_URL}",
+            )
         subprocess.run([opener, path], check=False)
 
 
