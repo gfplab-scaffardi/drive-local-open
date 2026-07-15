@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drive-local-open"
+version = "0.1.0"
+description = "Open the locally synced Google Drive folder from a Drive URL (Finder / Explorer / Terminal)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "I-S3" }]
+
+[project.scripts]
+drive-local-open = "drive_local_open.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

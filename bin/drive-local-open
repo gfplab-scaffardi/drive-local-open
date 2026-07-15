@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""User-facing CLI wrapper for Drive Local Open (dev checkout)."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1] / "src"
+sys.path.insert(0, str(ROOT))
+
+from drive_local_open.cli import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
