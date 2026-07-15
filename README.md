@@ -4,6 +4,8 @@ Chrome で開いている Google ドライブのフォルダを、PC 内の同�
 
 - データは PC 内の Google Drive for Desktop のみ参照（I-S3 サーバへ Drive 内容は送りません）
 - 公式案内: https://www.i-s3.com/tools/drive-local-open.html
+- ソース: https://github.com/suomimasuda/drive-local-open
+- 配布: https://github.com/suomimasuda/drive-local-open/releases/latest
 
 ## 要件
 
