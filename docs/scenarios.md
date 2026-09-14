@@ -8,7 +8,7 @@
 | S2 | Drive 未導入 | 公式 DL リンク付きメッセージ |
 | S3 | 複数アカウント | 最初の一致を採用し、stderr note |
 | S4 | 未同期 | 存在する親へフォールバック（`--no-fallback-parent` で無効化可） |
-| S5 | 共有／ショートカット | `.shortcut-targets-by-id` + 共有ドライブ探索 |
+| S5 | 共有／ショートカット | `.shortcut-targets-by-id` + 共有ドライブ探索（`Drive condivisi` などロケール名、My Drive の同名フォルダとは区別） |
 | S6 | ファイル/Docs | 親フォルダを開く |
 | S7 | my-drive | マイドライブを開く |
 | S8 | tombstone | 削除済みメッセージ |

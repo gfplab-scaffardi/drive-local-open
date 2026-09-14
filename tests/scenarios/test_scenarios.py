@@ -45,7 +45,8 @@ CREATE TABLE items (
   is_folder BOOLEAN NOT NULL,
   is_tombstone BOOLEAN NOT NULL DEFAULT 0,
   local_title TEXT,
-  subscribed BOOLEAN NOT NULL DEFAULT 1
+  subscribed BOOLEAN NOT NULL DEFAULT 1,
+  team_drive_stable_id INTEGER
 );
 CREATE TABLE stable_parents (
   item_stable_id INTEGER NOT NULL,
@@ -199,6 +200,91 @@ class S5SharedAndShortcut(unittest.TestCase):
             assert result is not None
             self.assertEqual(result.path.resolve(), shared.resolve())
 
+    def test_italian_shared_drive_not_my_drive_homonym(self):
+        """Locale 'Drive condivisi' + team drive must win over My Drive/same-name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            decoy = root / "Il mio Drive" / "Impianti"
+            decoy.mkdir(parents=True)
+            shared = root / "Drive condivisi" / "Supporto Tecnico" / "Impianti"
+            shared.mkdir(parents=True)
+            db = root / "metadata_sqlite_db"
+            _make_db(
+                db,
+                SCHEMA
+                + """
+                INSERT INTO items(
+                  stable_id,id,is_folder,local_title,team_drive_stable_id
+                ) VALUES
+                  (1,'tdRoot',1,'Supporto Tecnico',1),
+                  (2,'idImpianti',1,'Impianti',1);
+                INSERT INTO stable_parents(item_stable_id,parent_stable_id)
+                  VALUES (2,1);
+                """,
+            )
+            result = resolve_via_metadata([root], "idImpianti", db_path=db)
+            self.assertIsNotNone(result)
+            assert result is not None
+            self.assertEqual(result.path.resolve(), shared.resolve())
+            self.assertNotEqual(result.path.resolve(), decoy.resolve())
+            self.assertIsNone(result.note)
+
+    def test_unknown_locale_shared_container_by_child(self):
+        """Find a team drive under an unrecognized top-level container name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Il mio Drive").mkdir()
+            shared = root / "XyzContainer" / "TeamDrive" / "Folder"
+            shared.mkdir(parents=True)
+            db = root / "metadata_sqlite_db"
+            _make_db(
+                db,
+                SCHEMA
+                + """
+                INSERT INTO items(
+                  stable_id,id,is_folder,local_title,team_drive_stable_id
+                ) VALUES
+                  (1,'tdRoot',1,'TeamDrive',1),
+                  (2,'folder',1,'Folder',1);
+                INSERT INTO stable_parents(item_stable_id,parent_stable_id)
+                  VALUES (2,1);
+                """,
+            )
+            result = resolve_via_metadata([root], "folder", db_path=db)
+            self.assertIsNotNone(result)
+            assert result is not None
+            self.assertEqual(result.path.resolve(), shared.resolve())
+
+    def test_parent_fallback_ignores_shortcut_dir(self):
+        """Missing .shortcut-targets-by-id must not count as a second S3 hit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bank = root / "マイドライブ" / "Bank"
+            bank.mkdir(parents=True)
+            (root / ".shortcut-targets-by-id").mkdir()
+            db = root / "metadata_sqlite_db"
+            _make_db(
+                db,
+                SCHEMA
+                + """
+                INSERT INTO items(stable_id,id,is_folder,local_title) VALUES
+                  (1,'rootMyDrive',1,'マイドライブ'),
+                  (2,'idBank',1,'Bank'),
+                  (3,'idChild',1,'MissingChild');
+                INSERT INTO stable_parents(item_stable_id,parent_stable_id) VALUES
+                  (2,1),(3,2);
+                """,
+            )
+            result = resolve_via_metadata([root], "idChild", db_path=db)
+            self.assertIsNotNone(result)
+            assert result is not None
+            self.assertEqual(result.source, "parent_fallback")
+            self.assertEqual(result.path.resolve(), bank.resolve())
+            self.assertTrue(
+                result.note is None or "S3" not in result.note,
+                result.note,
+            )
+
 
 class S6FileParent(unittest.TestCase):
     def test_file_opens_parent(self):
@@ -236,6 +322,15 @@ class S7MyDrive(unittest.TestCase):
             md = root / "マイドライブ"
             md.mkdir()
             self.assertEqual(my_drive_path(root), md)
+
+    def test_italian_my_drive_not_shared(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shared = root / "Drive condivisi"
+            shared.mkdir()
+            mine = root / "Il mio Drive"
+            mine.mkdir()
+            self.assertEqual(my_drive_path(root), mine)
 
 
 class S8Tombstone(unittest.TestCase):

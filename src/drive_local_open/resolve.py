@@ -27,8 +27,39 @@ SKIP_DIR_NAMES = {
     "content_cache",
     "Other computers",
 }
+# Drive for Desktop localizes top-level folder names. Keep JA/EN first so
+# existing fixtures keep matching; then other locales seen in the wild.
+MY_DRIVE_DIR_NAMES_ORDERED = (
+    "マイドライブ",
+    "My Drive",
+    "Il mio Drive",
+    "Mi unidad",
+    "Mon Drive",
+    "Meine Ablage",
+    "Meu Drive",
+    "Mijn Drive",
+    "내 드라이브",
+    "我的云端硬盘",
+    "我的雲端硬碟",
+    "Мой диск",
+    "Mój dysk",
+    "Google Drive",
+)
+MY_DRIVE_DIR_NAMES = set(MY_DRIVE_DIR_NAMES_ORDERED)
 # xattr 全面 walk では巨大になりやすいので後段で別予算を使う
-SHARED_DIR_NAMES = {"Shared drives", "共有ドライブ"}
+SHARED_DIR_NAMES = {
+    "Shared drives",
+    "共有ドライブ",
+    "Drive condivisi",
+    "Unidades compartidas",
+    "Drives partagés",
+    "Geteilte Ablagen",
+    "Drives compartilhados",
+    "공유 드라이브",
+    "共享云端硬盘",
+    "共用雲端硬碟",
+    "Общие диски",
+}
 
 
 @dataclass(frozen=True)
@@ -63,7 +94,7 @@ def find_cloud_roots() -> list[Path]:
             try:
                 resolved = link.resolve()
                 # Prefer the CloudStorage parent as root when link points at My Drive
-                if resolved.name in {"マイドライブ", "My Drive"} and resolved.parent not in roots:
+                if _name_in(resolved.name, MY_DRIVE_DIR_NAMES) and resolved.parent not in roots:
                     roots.insert(0, resolved.parent)
             except OSError:
                 pass
@@ -140,6 +171,29 @@ def _norm_variants(s: str) -> list[str]:
     return list(dict.fromkeys([s, unicodedata.normalize("NFC", s), unicodedata.normalize("NFD", s)]))
 
 
+def _name_in(name: str, names: set[str]) -> bool:
+    known: set[str] = set()
+    for n in names:
+        known.update(_norm_variants(n))
+    return name in known or unicodedata.normalize("NFC", name) in known
+
+
+def _iter_visible_top_dirs(cloud_root: Path) -> list[Path]:
+    out: list[Path] = []
+    try:
+        for child in cloud_root.iterdir():
+            if child.name.startswith(".") or child.name in SKIP_DIR_NAMES:
+                continue
+            try:
+                if child.is_dir():
+                    out.append(child)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return out
+
+
 def _joinpath_variants(root: Path, parts: list[str]) -> list[Path]:
     """Expand Unicode normalization variants for each path segment."""
     variants: list[Path] = [root]
@@ -159,6 +213,21 @@ def _exists(path: Path) -> bool:
         return False
 
 
+def _same_existing_dir(a: Path, b: Path) -> bool:
+    try:
+        return a.is_dir() and b.is_dir() and a.samefile(b)
+    except OSError:
+        return False
+
+
+def _append_unique_dir(roots: list[Path], cand: Path) -> None:
+    if not cand.is_dir():
+        return
+    if any(_same_existing_dir(cand, existing) for existing in roots):
+        return
+    roots.append(cand)
+
+
 def _finalize_path(path: Path, *, is_folder: bool) -> Path:
     if not is_folder and path.is_file():
         path = path.parent
@@ -172,10 +241,67 @@ def shared_drive_roots(cloud_root: Path) -> list[Path]:
     roots: list[Path] = []
     for name in SHARED_DIR_NAMES:
         for n in _norm_variants(name):
-            cand = cloud_root / n
-            if cand.is_dir() and cand not in roots:
-                roots.append(cand)
+            _append_unique_dir(roots, cloud_root / n)
     return roots
+
+
+def my_drive_roots(cloud_root: Path) -> list[Path]:
+    roots: list[Path] = []
+    for name in MY_DRIVE_DIR_NAMES_ORDERED:
+        for n in _norm_variants(name):
+            _append_unique_dir(roots, cloud_root / n)
+    return roots
+
+
+def _metadata_join_specs(
+    cloud_root: Path,
+    parts: list[str],
+    *,
+    team_drive_stable_id: int | None = None,
+) -> list[tuple[Path, list[str], str]]:
+    """Build (join_root, path_parts, source) candidates from DriveFS titles.
+
+    Do not suffix-strip arbitrary prefixes: a shared drive named Supporto Tecnico
+    with child Impianti must not match My Drive/Impianti.
+    """
+    specs: list[tuple[Path, list[str], str]] = []
+    my_dirs = my_drive_roots(cloud_root)
+    shared_dirs = shared_drive_roots(cloud_root)
+
+    if parts:
+        for top in _iter_visible_top_dirs(cloud_root):
+            if top in shared_dirs or top in my_dirs:
+                continue
+            for name in _norm_variants(parts[0]):
+                if (top / name).is_dir() and top not in shared_dirs:
+                    shared_dirs.append(top)
+                    break
+
+    specs.append((cloud_root, parts, "metadata"))
+    if not team_drive_stable_id:
+        for d in my_dirs:
+            rest = parts[1:] if parts and _name_in(parts[0], MY_DRIVE_DIR_NAMES) else parts
+            specs.append((d, rest, "metadata"))
+    for d in shared_dirs:
+        rest = parts[1:] if parts and _name_in(parts[0], SHARED_DIR_NAMES) else parts
+        specs.append((d, rest, "shared"))
+    return specs
+
+
+def _usable_parent_fallback(path: Path, cloud_root: Path) -> bool:
+    """Reject the mount root and DriveFS internal dirs as parent fallback."""
+    try:
+        resolved = path.resolve()
+        stop = cloud_root.resolve()
+    except OSError:
+        resolved = path
+        stop = cloud_root
+    if resolved == stop:
+        return False
+    name = path.name
+    if name.startswith(".") or name in SKIP_DIR_NAMES:
+        return False
+    return True
 
 
 def shortcut_candidates(cloud_root: Path, item_id: str) -> list[Path]:
@@ -226,17 +352,12 @@ def nearest_existing_ancestor(path: Path, stop_at: Path | None = None) -> Path |
 
 
 def my_drive_path(cloud_root: Path) -> Path:
-    preferred = ("マイドライブ", "My Drive", "Google Drive")
-    for name in preferred:
-        for n in _norm_variants(name):
-            cand = cloud_root / n
-            if cand.is_dir():
-                return cand
+    known = my_drive_roots(cloud_root)
+    if known:
+        return known[0]
     try:
-        for child in cloud_root.iterdir():
-            if child.name.startswith("."):
-                continue
-            if child.name in SKIP_DIR_NAMES or child.name in SHARED_DIR_NAMES:
+        for child in _iter_visible_top_dirs(cloud_root):
+            if _name_in(child.name, SHARED_DIR_NAMES):
                 continue
             if child.is_dir():
                 return child
@@ -309,6 +430,16 @@ def resolve_via_metadata(
             if not row:
                 continue
             stable_id, is_folder, is_tombstone = row
+            team_drive_stable_id: int | None = None
+            try:
+                td = con.execute(
+                    "SELECT team_drive_stable_id FROM items WHERE id = ?",
+                    (item_id,),
+                ).fetchone()
+                if td and td[0]:
+                    team_drive_stable_id = int(td[0])
+            except (sqlite3.Error, TypeError, ValueError):
+                team_drive_stable_id = None
             if is_tombstone:
                 raise DriveLocalOpenError(
                     S8_TOMBSTONE,
@@ -319,22 +450,17 @@ def resolve_via_metadata(
                 continue
 
             for cloud_root in cloud_roots:
-                join_specs: list[tuple[Path, list[str], str]] = [
-                    (cloud_root, parts, "metadata"),
-                ]
-                for shared_root in shared_drive_roots(cloud_root):
-                    join_specs.append((shared_root, parts, "shared"))
-                    if parts and parts[0] in SHARED_DIR_NAMES:
-                        join_specs.append((shared_root, parts[1:], "shared"))
+                join_specs = _metadata_join_specs(
+                    cloud_root, parts, team_drive_stable_id=team_drive_stable_id
+                )
 
                 candidates: list[tuple[Path, str]] = []
                 for join_root, join_parts, source in join_specs:
                     if not join_parts:
                         candidates.append((join_root, source))
                         continue
-                    for start in range(len(join_parts)):
-                        for cand in _joinpath_variants(join_root, join_parts[start:]):
-                            candidates.append((cand, source))
+                    for cand in _joinpath_variants(join_root, join_parts):
+                        candidates.append((cand, source))
                 for sc in shortcut_candidates(cloud_root, item_id):
                     candidates.append((sc, "shortcut"))
 
@@ -349,9 +475,11 @@ def resolve_via_metadata(
                         exact_matches.append(
                             ResolveResult(path, item_id, False, source)
                         )
-                    elif allow_parent_fallback:
+                    elif allow_parent_fallback and source != "shortcut":
                         ancestor = nearest_existing_ancestor(cand, stop_at=cloud_root)
-                        if ancestor is not None:
+                        if ancestor is not None and _usable_parent_fallback(
+                            ancestor, cloud_root
+                        ):
                             parent_matches.append(
                                 ResolveResult(
                                     ancestor,
@@ -374,34 +502,61 @@ def resolve_via_metadata(
             f"Drive メタデータを読めませんでした（Drive 再起動後に再試行）: {last_err}",
         )
 
-    def _pick(matches: list[ResolveResult]) -> ResolveResult | None:
+    def _resolved(path: Path) -> Path:
+        try:
+            return path.resolve()
+        except OSError:
+            return path
+
+    def _is_under(child: Path, parent: Path) -> bool:
+        try:
+            child.relative_to(parent)
+            return True
+        except ValueError:
+            return False
+
+    def _pick(
+        matches: list[ResolveResult], *, prefer_deepest: bool = False
+    ) -> ResolveResult | None:
         if not matches:
             return None
         deduped: list[ResolveResult] = []
         seen: set[Path] = set()
         for m in matches:
-            try:
-                key = m.path.resolve()
-            except OSError:
-                key = m.path
+            if any(_same_existing_dir(m.path, d.path) for d in deduped):
+                continue
+            key = _resolved(m.path)
             if key in seen:
                 continue
             seen.add(key)
             deduped.append(m)
-        note = deduped[0].note
-        if len(deduped) > 1:
+        if prefer_deepest:
+            deduped.sort(key=lambda m: len(_resolved(m.path).parts), reverse=True)
+        chosen = deduped[0]
+        chosen_key = _resolved(chosen.path)
+        distinct = [chosen]
+        for m in deduped[1:]:
+            if _same_existing_dir(m.path, chosen.path):
+                continue
+            other = _resolved(m.path)
+            if _is_under(chosen_key, other) or _is_under(other, chosen_key):
+                continue
+            distinct.append(m)
+        note = chosen.note
+        if len(distinct) > 1:
             s3 = (
-                f"複数アカウントで一致（S3）。最初のマウントを採用: {deduped[0].path}"
-                f"（他 {len(deduped) - 1} 件）"
+                f"複数アカウントで一致（S3）。最初のマウントを採用: {chosen.path}"
+                f"（他 {len(distinct) - 1} 件）"
             )
             note = f"{note} / {s3}" if note else s3
-        m = deduped[0]
-        return ResolveResult(m.path, m.item_id, m.is_my_drive_root, m.source, note)
+        return ResolveResult(
+            chosen.path, chosen.item_id, chosen.is_my_drive_root, chosen.source, note
+        )
 
     picked = _pick(exact_matches)
     if picked is not None:
         return picked
-    return _pick(parent_matches)
+    return _pick(parent_matches, prefer_deepest=True)
 
 
 def resolve_via_xattr_walk(
