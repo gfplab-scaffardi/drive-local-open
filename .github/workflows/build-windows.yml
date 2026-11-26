@@ -53,16 +53,6 @@ jobs:
           Set-Content -Path ($setup.FullName + '.sha256') -Value ("{0}  {1}" -f $hash, $setup.Name) -NoNewline
           Get-Content ($setup.FullName + '.sha256')
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer
-          path: |
-            dist/DriveLocalOpen-Setup-*.exe
-            dist/DriveLocalOpen-Setup-*.exe.sha256
-            dist/drive-local-open.exe
-          retention-days: 7
-
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         env:
